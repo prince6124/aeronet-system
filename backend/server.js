@@ -14,6 +14,7 @@ app.use("/api/orders",         require("./routes/orders"));
 app.use("/api/qc",             require("./routes/qc"));
 app.use("/api/sensor",         require("./routes/sensor"));
 app.use("/api/certifications", require("./routes/certifications"));
+app.use("/api/shipments", require("./routes/shipments"));
 
 // ── Start ─────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
