@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AeroNet — Data System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+
+<!-- ═══ LOGIN ═══════════════════════════════════════ -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">✈</div>
+    <h1 class="login-title">AeroNet</h1>
+    <p class="login-sub">Data Driven System · 5CM506</p>
+
+    <div class="form-group">
+      <label>Select Role</label>
+      <select id="loginRole">
+        <option value="manager">Manager — Full access + approvals</option>
+        <option value="inspector">QC Inspector — Submit &amp; update QC reports</option>
+        <option value="engineer">Engineer — Log IoT sensor readings</option>
+        <option value="auditor">Auditor — Read-only access</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Username</label>
+      <input id="loginUser" type="text" placeholder="e.g. j.carter" />
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input id="loginPass" type="password" placeholder="••••••••" />
+    </div>
+    <button class="login-btn" onclick="doLogin()">Sign In</button>
+    <div id="loginError" class="login-error hidden">Invalid credentials — password is pass123</div>
+    <div class="login-hint"><strong>Demo password:</strong> <code>pass123</code> · any username</div>
+  </div>
+</div>
+
+<!-- ═══ APP ══════════════════════════════════════════ -->
+<div id="appShell" class="hidden">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-icon">✈</div>
+      <div>
+        <div class="brand-name">AeroNet</div>
+        <div class="brand-sub">Data System</div>
+      </div>
+    </div>
+    <nav class="sidenav" id="sideNav"></nav>
+    <div class="sidebar-user" id="sidebarUser"></div>
+    <div class="sidebar-footer">
+      <div class="status-dot"></div><span>System Online</span>
+    </div>
+  </aside>
+
+  <div class="main-wrap">
+    <header class="topbar">
+      <div class="topbar-left">
+        <h1 class="page-title" id="pageTitle">Dashboard</h1>
+        <div class="page-sub" id="pageSub">Loading…</div>
+      </div>
+      <div class="topbar-right">
+        <div id="filterWrap" class="filter-wrap hidden">
+          <select id="filterSelect" class="filter-select" onchange="applyFilter()">
+            <option value="all">All</option>
+          </select>
+        </div>
+        <div class="search-wrap">
+          <span class="search-icon">⌕</span>
+          <input id="searchInput" class="search-input" placeholder="Search…" />
+        </div>
+        <button class="action-btn" onclick="exportCSV()"><span>↓</span> CSV</button>
+        <button class="action-btn" onclick="exportPDF()"><span>↓</span> PDF</button>
+        <button class="action-btn logout-btn" onclick="doLogout()">Sign out</button>
+      </div>
+    </header>
+
+    <div id="alerts" class="alert-bar hidden"></div>
+
+    <main class="content-area">
+      <!-- Role action bar — shown per view -->
+      <div id="actionBar" class="action-bar hidden"></div>
+      <div id="content" class="table-container"></div>
+    </main>
+  </div>
+</div>
+
+<!-- ═══ MODAL OVERLAY ══════════════════════════════ -->
+<div id="modalOverlay" class="modal-overlay hidden" onclick="closeModal(event)">
+  <div class="modal-box" id="modalBox"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
