@@ -2,7 +2,7 @@
 // AeroNet — app.js  (RBAC + Update capabilities + PDF)
 // ═══════════════════════════════════════════════════════
 
-const API = "http://localhost:5000/api";
+const API = "https://aeronet-system.onrender.com/api";
 
 // ── DOM refs ──────────────────────────────────────────
 const content      = document.getElementById("content");
@@ -35,13 +35,22 @@ const ROLES = {
       { view:"kpis",           icon:"◈", label:"KPI Dashboard",  group:"Overview" },
       { view:"suppliers",      icon:"⬡", label:"Suppliers",       group:"Operations" },
       { view:"orders",         icon:"▣", label:"Orders",          group:"Operations" },
+      { view:"shipments",      icon:"🚚", label:"Shipments",       group:"Operations" },
       { view:"qc",             icon:"◫", label:"QC Reports",      group:"Quality" },
       { view:"sensor",         icon:"◉", label:"IoT Logs",        group:"Monitoring" },
       { view:"certifications", icon:"◬", label:"Certifications",  group:"Compliance" },
       { view:"performance",    icon:"◎", label:"Performance",     group:"Analytics" },
     ],
-    // what they can do per view
-    can: { approveQC: true, submitQC: false, logIoT: false }
+    can: { approveQC: true, submitQC: false, logIoT: false, updateShipment: false }
+  },
+  warehouse: {
+    label: "Warehouse Manager", color: "#f97316",
+    nav: [
+      { view:"shipments", icon:"🚚", label:"Shipments", group:"Operations" },
+      { view:"orders",    icon:"▣", label:"Orders",    group:"Operations" },
+      { view:"sensor",    icon:"◉", label:"IoT Logs",  group:"Monitoring" },
+    ],
+    can: { approveQC: false, submitQC: false, logIoT: false, updateShipment: true }
   },
   inspector: {
     label: "QC Inspector", color: "#00e5a0",
@@ -145,12 +154,12 @@ function navigate(view) {
   hideActionBar();
   clearAlert();
   searchInput.value = "";
-  const views = { kpis, suppliers, orders, qc, sensor, certifications, performance };
+  const views = { kpis, suppliers, orders, shipments, qc, sensor, certifications, performance };
   if (views[view]) views[view]();
 }
 
 searchInput.addEventListener("input", () => {
-  const views = { suppliers, orders, qc, sensor, certifications, performance };
+  const views = { suppliers, orders, shipments, qc, sensor, certifications, performance };
   if (views[currentView]) views[currentView]();
 });
 
@@ -192,7 +201,7 @@ function showFilter(options) {
 }
 function hideFilter() { filterWrap.classList.add("hidden"); }
 function applyFilter() {
-  const views = { qc, sensor, certifications, orders };
+  const views = { qc, sensor, certifications, orders, shipments };
   if (views[currentView]) views[currentView]();
 }
 
@@ -791,6 +800,126 @@ function performance() {
       setPage("Performance", `${data.length} suppliers`);
     })
     .catch(() => showEmpty("Cannot load performance — check backend"));
+}
+
+// ═══════════════════════════════════════════════════════
+// SHIPMENTS — PostgreSQL
+// Warehouse Manager can update status
+// ═══════════════════════════════════════════════════════
+function shipments() {
+  setPage("Shipments", "PostgreSQL → aeronet_system.shipment");
+  showLoading();
+  showFilter([
+    { value:"Delivered",  label:"Delivered" },
+    { value:"In Transit", label:"In Transit" },
+    { value:"Pending",    label:"Pending" },
+    { value:"Dispatched", label:"Dispatched" },
+  ]);
+
+  const can = ROLES[currentRole].can;
+  if (can.updateShipment) {
+    showActionBar(`
+      <span class="ab-hint">Click <strong>Update</strong> on any row to change shipment status</span>
+    `);
+  } else {
+    hideActionBar();
+  }
+
+  fetch(`${API}/shipments`)
+    .then(r => r.json())
+    .then(data => { lastData = data; renderShipments(data); })
+    .catch(() => showEmpty("Cannot load shipments — check backend"));
+}
+
+function renderShipments(data) {
+  const search = searchInput.value.toLowerCase();
+  const filter = filterSelect.value;
+  const can    = ROLES[currentRole].can;
+
+  const filtered = data.filter(s => {
+    const txt = (String(s.shipment_id) + (s.tracking_number||"") + (s.supplier_name||"") + (s.current_status||"") + (s.port_of_entry||"")).toLowerCase();
+    return txt.includes(search) && (filter === "all" || s.current_status === filter);
+  });
+
+  if (!filtered.length) { showEmpty("No shipments match your filter"); return; }
+
+  const headers = can.updateShipment
+    ? ["Shipment ID","Supplier","Tracking No.","Port of Entry","Status","Action"]
+    : ["Shipment ID","Supplier","Tracking No.","Port of Entry","Status","Order Date"];
+
+  buildTable(headers, filtered.map(s => {
+    const actionCell = can.updateShipment
+      ? `<span style="display:flex;gap:6px">
+           <button class="inline-btn btn-approve" onclick="openUpdateShipment(${s.shipment_id},'${s.current_status}',event)">Update</button>
+         </span>`
+      : (s.order_date ? String(s.order_date).split("T")[0] : "—");
+
+    return {
+      cells: [
+        `#${s.shipment_id}`,
+        s.supplier_name || "—",
+        `<span style="font-family:var(--font-mono);font-size:11px">${s.tracking_number || "—"}</span>`,
+        s.port_of_entry || "—",
+        badge(s.current_status),
+        actionCell
+      ],
+      alertColor: s.current_status === "Delayed" ? "red" : s.current_status === "Pending" ? "yellow" : null
+    };
+  }));
+
+  setPage("Shipments", `${filtered.length} of ${data.length} shipments · PostgreSQL`);
+  if (filtered.some(s => s.current_status === "Delayed")) showAlert("⚠ Delayed shipments detected", "red");
+}
+
+function openUpdateShipment(id, currentStatus, e) {
+  e.stopPropagation();
+  openModal(`
+    <h2 class="modal-title">Update Shipment #${id}</h2>
+    <p class="modal-sub">Current status: <strong>${currentStatus}</strong></p>
+    <div class="modal-form">
+      <div class="mf-row">
+        <label>New Status</label>
+        <select id="ship_status">
+          <option value="Pending">Pending</option>
+          <option value="In Transit">In Transit</option>
+          <option value="Dispatched">Dispatched</option>
+          <option value="Delivered">Delivered</option>
+          <option value="Delayed">Delayed</option>
+        </select>
+      </div>
+      <div class="mf-row">
+        <label>Current Location</label>
+        <input id="ship_location" placeholder="e.g. Frankfurt, DE" />
+      </div>
+      <div id="ship_error" class="mf-error hidden"></div>
+      <div class="modal-actions">
+        <button class="ab-btn ab-ghost" onclick="closeModalDirect()">Cancel</button>
+        <button class="ab-btn ab-primary" onclick="updateShipmentStatus(${id})">Update Shipment</button>
+      </div>
+    </div>
+  `);
+}
+
+async function updateShipmentStatus(id) {
+  const status   = document.getElementById("ship_status").value;
+  const location = document.getElementById("ship_location").value.trim();
+  const err      = document.getElementById("ship_error");
+  try {
+    const res  = await fetch(`${API}/shipments/${id}/status`, {
+      method:  "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ status, location })
+    });
+    const data = await res.json();
+    if (!res.ok) { err.textContent = data.error; err.classList.remove("hidden"); return; }
+    closeModalDirect();
+    showAlert(`✔ Shipment #${id} updated to ${status}`,
+      status === "Delivered" ? "green" : status === "Delayed" ? "red" : "yellow");
+    shipments();
+  } catch {
+    err.textContent = "Network error — is the backend running?";
+    err.classList.remove("hidden");
+  }
 }
 
 // ═══════════════════════════════════════════════════════
