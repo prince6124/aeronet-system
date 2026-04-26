@@ -748,10 +748,11 @@ function renderSuppliers(data) {
   );
   if (!filtered.length) { showEmpty("No suppliers match"); return; }
 
-  const colTemplate = "50px 180px 240px 200px 150px 110px";
+  const colTemplate = "60px 200px 280px 220px 160px 120px";
 
+  content.style.minWidth = "1050px";
   content.innerHTML = `
-    <div class="header-row" style="grid-template-columns:${colTemplate}">
+    <div class="header-row" style="grid-template-columns:${colTemplate};min-width:1050px">
       <span>ID</span><span>Business Name</span><span>Address</span>
       <span>Email</span><span>Phone</span><span>Accreditation</span>
     </div>`;

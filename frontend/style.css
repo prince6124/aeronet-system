@@ -118,7 +118,7 @@ body{display:flex;height:100vh;position:relative;z-index:1}
 .content-area::-webkit-scrollbar{width:5px}
 .content-area::-webkit-scrollbar-thumb{background:var(--dim);border-radius:99px}
 
-.table-container{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;animation:fadeUp .3s ease}
+.table-container{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow-x:auto;overflow-y:auto;animation:fadeUp .3s ease}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 
 /* TABLE */
