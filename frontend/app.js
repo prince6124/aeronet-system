@@ -159,8 +159,16 @@ function navigate(view) {
 }
 
 searchInput.addEventListener("input", () => {
-  const views = { suppliers, orders, shipments, qc, sensor, certifications, performance };
-  if (views[currentView]) views[currentView]();
+  const renders = {
+    suppliers:      () => renderSuppliers(lastData),
+    orders:         () => renderOrders(lastData),
+    shipments:      () => renderShipments(lastData),
+    qc:             () => renderQC(lastData),
+    sensor:         () => renderSensor(lastData),
+    certifications: () => renderCerts(lastData),
+  };
+  if (renders[currentView] && lastData.length) renders[currentView]();
+  else if (currentView === "performance") performance();
 });
 
 // ═══════════════════════════════════════════════════════
@@ -201,8 +209,15 @@ function showFilter(options) {
 }
 function hideFilter() { filterWrap.classList.add("hidden"); }
 function applyFilter() {
-  const views = { qc, sensor, certifications, orders, shipments };
-  if (views[currentView]) views[currentView]();
+  const renders = {
+    qc:             () => renderQC(lastData),
+    sensor:         () => renderSensor(lastData),
+    certifications: () => renderCerts(lastData),
+    orders:         () => renderOrders(lastData),
+    shipments:      () => renderShipments(lastData),
+  };
+  if (renders[currentView] && lastData.length) renders[currentView]();
+  else if (renders[currentView]) { const views = { qc, sensor, certifications, orders, shipments }; views[currentView](); }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -289,7 +304,7 @@ async function kpis() {
 
     content.innerHTML = `
       <div class="kpi-grid">
-        <div class="kpi-card kpi-blue">
+        <div class="kpi-card kpi-purple">
           <div class="kpi-icon">◫</div>
           <div class="kpi-value">${qcData.length}</div>
           <div class="kpi-label">QC Reports</div>
@@ -301,7 +316,7 @@ async function kpis() {
           <div class="kpi-label">IoT Readings</div>
           <div class="kpi-sub">${critical} critical · ${warning} warning · ${ok} ok</div>
         </div>
-        <div class="kpi-card kpi-purple">
+        <div class="kpi-card kpi-teal">
           <div class="kpi-icon">◬</div>
           <div class="kpi-value">${certData.length}</div>
           <div class="kpi-label">Certifications</div>
@@ -718,66 +733,77 @@ function renderCerts(data) {
 // SUPPLIERS
 // ═══════════════════════════════════════════════════════
 function suppliers() {
-  setPage("Suppliers", "All registered aerospace suppliers");
-  showLoading();
-  hideActionBar();
-
+  setPage("Suppliers", "PostgreSQL → aeronet_system.supplier");
+  showLoading(); hideActionBar();
   fetch(`${API}/suppliers`)
     .then(r => r.json())
-    .then(data => {
-      lastData = data;
-      const search   = searchInput.value.toLowerCase();
-      const filtered = data.filter(s => (s.business_name||"").toLowerCase().includes(search));
-      if (!filtered.length) { showEmpty("No suppliers match"); return; }
-      buildTable(
-        ["Supplier ID","Business Name","Email","Phone","Status"],
-        filtered.map(s => ({
-          cells: [s.supplier_id, s.business_name, s.contact_email, s.contact_phone, badge(s.accreditation_status)]
-        }))
-      );
-      setPage("Suppliers", `${filtered.length} records`);
-    })
+    .then(data => { lastData = data; renderSuppliers(data); })
     .catch(() => showEmpty("Cannot load suppliers — check backend"));
+}
+
+function renderSuppliers(data) {
+  const search = searchInput.value.toLowerCase();
+  const filtered = data.filter(s =>
+    (s.business_name + s.contact_email + s.address + s.accreditation_status).toLowerCase().includes(search)
+  );
+  if (!filtered.length) { showEmpty("No suppliers match"); return; }
+  buildTable(
+    ["ID","Business Name","Address","Email","Phone","Accreditation"],
+    filtered.map(s => ({
+      cells: [
+        `#${s.supplier_id}`,
+        `<strong>${s.business_name}</strong>`,
+        s.address || "—",
+        s.contact_email || "—",
+        s.contact_phone || "—",
+        badge(s.accreditation_status)
+      ]
+    }))
+  );
+  setPage("Suppliers", `${filtered.length} of ${data.length} suppliers · PostgreSQL`);
 }
 
 // ═══════════════════════════════════════════════════════
 // ORDERS
 // ═══════════════════════════════════════════════════════
 function orders() {
-  setPage("Orders", "Purchase order log");
-  showLoading();
-  hideActionBar();
+  setPage("Orders", "PostgreSQL → aeronet_system.purchase_order");
+  showLoading(); hideActionBar();
   showFilter([
-    { value:"Pending",   label:"Pending" },
-    { value:"Delayed",   label:"Delayed" },
-    { value:"Delivered", label:"Delivered" },
+    { value:"Placed",     label:"Placed" },
+    { value:"Confirmed",  label:"Confirmed" },
+    { value:"Dispatched", label:"Dispatched" },
+    { value:"Delivered",  label:"Delivered" },
+    { value:"Completed",  label:"Completed" },
   ]);
-
   fetch(`${API}/orders`)
     .then(r => r.json())
-    .then(data => {
-      lastData = data;
-      const search = searchInput.value.toLowerCase();
-      const filter = filterSelect.value;
-      const filtered = data.filter(o =>
-        String(o.order_id).includes(search) && (filter === "all" || o.status === filter)
-      );
-      if (!filtered.length) { showEmpty("No orders match"); return; }
-      let hasDelayed = false;
-      buildTable(
-        ["Order ID","Supplier","Status","Order Date","Delivery"],
-        filtered.map(o => {
-          if (o.status === "Delayed") hasDelayed = true;
-          return {
-            cells: [o.order_id, o.supplier_id, badge(o.status), o.order_date, o.desired_delivery],
-            alertColor: o.status === "Delayed" ? "red" : null
-          };
-        })
-      );
-      if (hasDelayed) showAlert("⚠ Delayed orders detected", "red");
-      setPage("Orders", `${filtered.length} orders`);
-    })
+    .then(data => { lastData = data; renderOrders(data); })
     .catch(() => showEmpty("Cannot load orders — check backend"));
+}
+
+function renderOrders(data) {
+  const search = searchInput.value.toLowerCase();
+  const filter = filterSelect.value;
+  const filtered = data.filter(o => {
+    const txt = (String(o.order_id) + (o.supplier_name||o.supplier_id||"" ) + (o.status||"" )).toLowerCase();
+    return txt.includes(search) && (filter === "all" || o.status === filter);
+  });
+  if (!filtered.length) { showEmpty("No orders match your filter"); return; }
+  buildTable(
+    ["Order ID","Supplier","Status","Order Date","Desired Delivery"],
+    filtered.map(o => ({
+      cells: [
+        `#${o.order_id}`,
+        o.supplier_name || o.supplier_id || "—",
+        badge(o.status),
+        o.order_date ? String(o.order_date).split("T")[0] : "—",
+        o.desired_delivery ? String(o.desired_delivery).split("T")[0] : "—"
+      ],
+      alertColor: o.status === "Delayed" ? "red" : null
+    }))
+  );
+  setPage("Orders", `${filtered.length} of ${data.length} orders · PostgreSQL`);
 }
 
 // ═══════════════════════════════════════════════════════
