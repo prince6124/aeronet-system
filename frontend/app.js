@@ -744,22 +744,33 @@ function suppliers() {
 function renderSuppliers(data) {
   const search = searchInput.value.toLowerCase();
   const filtered = data.filter(s =>
-    (s.business_name + s.contact_email + s.address + s.accreditation_status).toLowerCase().includes(search)
+    ((s.business_name||"") + (s.contact_email||"") + (s.address||"") + (s.accreditation_status||"")).toLowerCase().includes(search)
   );
   if (!filtered.length) { showEmpty("No suppliers match"); return; }
-  buildTable(
-    ["ID","Business Name","Address","Email","Phone","Accreditation"],
-    filtered.map(s => ({
-      cells: [
-        `#${s.supplier_id}`,
-        `<strong>${s.business_name}</strong>`,
-        s.address || "—",
-        s.contact_email || "—",
-        s.contact_phone || "—",
-        badge(s.accreditation_status)
-      ]
-    }))
-  );
+
+  const colTemplate = "50px 180px 240px 200px 150px 110px";
+
+  content.innerHTML = `
+    <div class="header-row" style="grid-template-columns:${colTemplate}">
+      <span>ID</span><span>Business Name</span><span>Address</span>
+      <span>Email</span><span>Phone</span><span>Accreditation</span>
+    </div>`;
+
+  filtered.forEach((s, i) => {
+    const div = document.createElement("div");
+    div.className = "row";
+    div.style.cssText = `grid-template-columns:${colTemplate};animation-delay:${i*35}ms`;
+    div.innerHTML = [
+      `#${s.supplier_id}`,
+      `<strong>${s.business_name || "—"}</strong>`,
+      `<span style="color:var(--muted);font-size:12px">${s.address || "—"}</span>`,
+      `<span style="font-size:12px">${s.contact_email || "—"}</span>`,
+      `<span style="color:var(--muted);font-size:12px">${s.contact_phone || "—"}</span>`,
+      badge(s.accreditation_status)
+    ].map(c => `<span>${c}</span>`).join("");
+    content.appendChild(div);
+  });
+
   setPage("Suppliers", `${filtered.length} of ${data.length} suppliers · PostgreSQL`);
 }
 
