@@ -1,0 +1,62 @@
+{
+  "_id": {
+    "$oid": "69e43e7fc520ec4c2a84b5d4"
+  },
+  "report_id": "QC1001",
+  "part_id": "A320-FP-220",
+  "supplier_id": "SUP-01",
+  "inspection_type": "Dimensional",
+  "inspector": {
+    "empId": "EMP101",
+    "name": "Maria Nikolaou"
+  },
+  "results": {
+    "tolerance_check": "PASS",
+    "surface_cracks": "NONE"
+  },
+  "inspection_date": "2026-03-01",
+  "status": "APPROVED"
+}
+
+{
+  "_id": {
+    "$oid": "69e43e98c520ec4c2a84b5d6"
+  },
+  "report_id": "QC1002",
+  "part_id": "A320-WP-330",
+  "supplier_id": "SUP-02",
+  "inspection_type": "NDT",
+  "inspector": {
+    "empId": "EMP102",
+    "name": "John Smith"
+  },
+  "results": {
+    "ultrasound": "PASS",
+    "xray": "PASS"
+  },
+  "inspection_date": "2026-03-02",
+  "status": "APPROVED"
+}
+
+{
+  "_id": {
+    "$oid": "69e43eabc520ec4c2a84b5d8"
+  },
+  "report_id": "QC1003",
+  "part_id": "A320-FP-220",
+  "supplier_id": "SUP-01",
+  "inspection_type": "Environmental",
+  "inspector": {
+    "empId": "EMP103",
+    "name": "Ahmed Rahman"
+  },
+  "results": {
+    "temperature_test": "FAIL",
+    "pressure_test": "PASS"
+  },
+  "inspection_date": "2026-03-05",
+  "status": "APPROVED",
+  "updated_at": {
+    "$date": "2026-04-21T01:05:58.534Z"
+  }
+}

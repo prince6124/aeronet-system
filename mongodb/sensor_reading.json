@@ -1,0 +1,47 @@
+{
+  "_id": {
+    "$oid": "69e43ef1c520ec4c2a84b5dc"
+  },
+  "device_id": "MEQ-44",
+  "timestamp": "2026-03-10T10:30:00",
+  "temperature": 82.4,
+  "vibration": 0.34,
+  "pressure": 102.2,
+  "status": "warning"
+}
+
+{
+  "_id": {
+    "$oid": "69e43effc520ec4c2a84b5de"
+  },
+  "device_id": "MEQ-44",
+  "timestamp": "2026-03-10T10:35:00",
+  "temperature": 85.1,
+  "vibration": 0.41,
+  "pressure": 101.8,
+  "status": "critical"
+}
+
+{
+  "_id": {
+    "$oid": "69e43f0fc520ec4c2a84b5e0"
+  },
+  "device_id": "MEQ-22",
+  "timestamp": "2026-03-10T10:40:00",
+  "temperature": 70,
+  "vibration": 0.22,
+  "pressure": 100.1,
+  "status": "ok"
+}
+
+{
+  "_id": {
+    "$oid": "69e6cef77a7ea9e69fc465b2"
+  },
+  "device_id": "mew123",
+  "timestamp": "2026-04-21T01:12:23.268Z",
+  "temperature": 9.9,
+  "vibration": 0.03,
+  "pressure": 5.3,
+  "status": "ok"
+}
