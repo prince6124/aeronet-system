@@ -124,7 +124,7 @@ body{display:flex;height:100vh;position:relative;z-index:1}
 /* TABLE */
 .header-row{display:grid;padding:13px 20px;background:var(--surface2);border-bottom:1px solid var(--border)}
 .header-row span{font-family:var(--font-mono);font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
-.row{display:grid;padding:14px 20px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s ease;position:relative}
+.row{display:grid;padding:18px 20px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s ease;position:relative;min-height:56px;align-items:center}
 .row:last-child{border-bottom:none}
 .row:hover{background:rgba(255,255,255,.025)}
 .row:hover::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent)}
