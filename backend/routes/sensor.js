@@ -10,6 +10,8 @@ router.get("/", async (req, res) => {
       device_id: d.device_id,
       timestamp:  d.timestamp,
       status:     d.status,
+      gps_lat:    d.gps_lat || null,
+      gps_lon:    d.gps_lon || null,
       telemetry: {
         temperature: d.temperature,
         vibration:   d.vibration,

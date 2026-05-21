@@ -38,7 +38,9 @@ const ROLES = {
       { view:"shipments",      icon:"🚚", label:"Shipments",       group:"Operations" },
       { view:"qc",             icon:"◫", label:"QC Reports",      group:"Quality" },
       { view:"sensor",         icon:"◉", label:"IoT Logs",        group:"Monitoring" },
+      { view:"iot_chart",      icon:"📈", label:"IoT Chart",       group:"Monitoring" },
       { view:"certifications", icon:"◬", label:"Certifications",  group:"Compliance" },
+      { view:"auditlog",       icon:"📋", label:"Audit Log",       group:"Compliance" },
       { view:"performance",    icon:"◎", label:"Performance",     group:"Analytics" },
     ],
     can: { approveQC: true, submitQC: false, logIoT: false, updateShipment: false }
@@ -154,7 +156,7 @@ function navigate(view) {
   hideActionBar();
   clearAlert();
   searchInput.value = "";
-  const views = { kpis, suppliers, orders, shipments, qc, sensor, certifications, performance };
+  const views = { kpis, suppliers, orders, shipments, qc, sensor, iot_chart, certifications, auditlog, performance };
   if (views[view]) views[view]();
 }
 
@@ -166,6 +168,7 @@ searchInput.addEventListener("input", () => {
     qc:             () => renderQC(lastData),
     sensor:         () => renderSensor(lastData),
     certifications: () => renderCerts(lastData),
+    auditlog:       () => renderAuditLog(lastData),
   };
   if (renders[currentView] && lastData.length) renders[currentView]();
   else if (currentView === "performance") performance();
@@ -288,20 +291,24 @@ async function kpis() {
   hideActionBar();
 
   try {
-    const [qcData, sensorData, certData] = await Promise.all([
+    const [qcData, sensorData, certData, shipData, supplierData] = await Promise.all([
       fetch(`${API}/qc`).then(r => r.json()),
       fetch(`${API}/sensor`).then(r => r.json()),
       fetch(`${API}/certifications`).then(r => r.json()),
+      fetch(`${API}/shipments`).then(r => r.json()),
+      fetch(`${API}/suppliers/performance`).then(r => r.json()),
     ]);
 
     lastData = [];
-    const approved = qcData.filter(q => q.status === "APPROVED").length;
-    const review   = qcData.filter(q => q.status === "REVIEW").length;
-    const critical = sensorData.filter(s => s.status === "critical").length;
-    const warning  = sensorData.filter(s => s.status === "warning").length;
-    const ok       = sensorData.filter(s => s.status === "ok").length;
-    const certOk   = certData.filter(c => c.status === "approved").length;
-
+    const approved  = qcData.filter(q => q.status === "APPROVED").length;
+    const review    = qcData.filter(q => q.status === "REVIEW").length;
+    const critical  = sensorData.filter(s => s.status === "critical").length;
+    const warning   = sensorData.filter(s => s.status === "warning").length;
+    const ok        = sensorData.filter(s => s.status === "ok").length;
+    const certOk    = certData.filter(c => c.status === "approved").length;
+    const delivered = shipData.filter(s => s.current_status === "Delivered").length;
+    const delayed   = shipData.filter(s => s.current_status === "Delayed").length;
+    const maxOrders = Math.max(...(supplierData.map(p => parseInt(p.total_orders)||0)), 1);
     content.innerHTML = `
       <div class="kpi-grid">
         <div class="kpi-card kpi-purple">
@@ -322,11 +329,11 @@ async function kpis() {
           <div class="kpi-label">Certifications</div>
           <div class="kpi-sub">${certOk} approved</div>
         </div>
-        <div class="kpi-card ${review > 0 ? "kpi-yellow" : "kpi-green"}">
-          <div class="kpi-icon">◈</div>
-          <div class="kpi-value">${review}</div>
-          <div class="kpi-label">Pending Reviews</div>
-          <div class="kpi-sub">QC reports awaiting approval</div>
+        <div class="kpi-card ${delayed > 0 ? "kpi-red" : "kpi-green"}">
+          <div class="kpi-icon">🚚</div>
+          <div class="kpi-value">${shipData.length}</div>
+          <div class="kpi-label">Shipments</div>
+          <div class="kpi-sub">${delivered} delivered · ${delayed} delayed</div>
         </div>
       </div>
 
@@ -346,11 +353,26 @@ async function kpis() {
             ${bar("Critical", critical, sensorData.length, "var(--red)")}
           </div>
         </div>
+        <div class="kpi-panel">
+          <div class="kpi-section-title">Shipment Status</div>
+          <div class="bar-chart">
+            ${bar("Delivered",  delivered, shipData.length, "var(--green)")}
+            ${bar("Delayed",    delayed,   shipData.length, "var(--red)")}
+            ${bar("In Transit", shipData.filter(s=>s.current_status==="In Transit").length, shipData.length, "var(--accent)")}
+          </div>
+        </div>
+        <div class="kpi-panel">
+          <div class="kpi-section-title">Supplier Order Volume</div>
+          <div class="bar-chart" id="kpi-supplier-bars">
+            ${supplierData.slice(0,5).map(p => bar(p.business_name.split(" ")[0], parseInt(p.total_orders)||0, maxOrders, "var(--accent)")).join("")}
+          </div>
+        </div>
       </div>
     `;
 
-    setPage("KPI Dashboard", `${qcData.length + sensorData.length + certData.length} records across 3 collections`);
+    setPage("KPI Dashboard", `Live metrics · PostgreSQL + MongoDB`);
     if (critical > 0) showAlert(`⚠ ${critical} critical IoT event(s) require attention`, "red");
+    else if (delayed > 0) showAlert(`⚠ ${delayed} delayed shipment(s) detected`, "red");
     else if (review > 0) showAlert(`ℹ ${review} QC report(s) pending your approval`, "yellow");
 
   } catch {
@@ -591,16 +613,20 @@ function renderSensor(data) {
 
   let hasCritical = false;
   buildTable(
-    ["Device ID", "Temperature", "Vibration", "Pressure", "Status"],
+    ["Device ID", "Timestamp", "Temperature", "Vibration", "Pressure", "GPS", "Status"],
     filtered.map(s => {
       const temp = s.telemetry?.temperature || 0;
       if (s.status === "critical") hasCritical = true;
+      const ts = s.timestamp ? String(s.timestamp).replace("T"," ").split(".")[0] : "—";
+      const gps = (s.gps_lat && s.gps_lon) ? `${Number(s.gps_lat).toFixed(2)}, ${Number(s.gps_lon).toFixed(2)}` : "—";
       return {
         cells: [
-          s.device_id,
+          `<span style="font-family:var(--font-mono)">${s.device_id}</span>`,
+          `<span style="font-size:11px;color:var(--muted)">${ts}</span>`,
           badge(temp > 80 ? `${temp}° ⚠` : `${temp}°`),
           `<span style="color:var(--muted)">${s.telemetry?.vibration ?? "—"}</span>`,
           `<span style="color:var(--muted)">${s.telemetry?.pressure ?? "—"}</span>`,
+          `<span style="font-size:11px;color:var(--muted)">${gps}</span>`,
           badge(s.status)
         ],
         alertColor: s.status === "critical" ? "red" : s.status === "warning" ? "yellow" : null
@@ -803,12 +829,13 @@ function renderOrders(data) {
   });
   if (!filtered.length) { showEmpty("No orders match your filter"); return; }
   buildTable(
-    ["Order ID","Supplier","Status","Order Date","Desired Delivery"],
+    ["Order ID","Supplier","Status","Total Value","Order Date","Desired Delivery"],
     filtered.map(o => ({
       cells: [
         `#${o.order_id}`,
         o.supplier_name || o.supplier_id || "—",
         badge(o.status),
+        o.total_value > 0 ? `<span style="color:var(--green);font-family:var(--font-mono)">$${Number(o.total_value).toLocaleString("en-US", {minimumFractionDigits:2})}</span>` : "—",
         o.order_date ? String(o.order_date).split("T")[0] : "—",
         o.desired_delivery ? String(o.desired_delivery).split("T")[0] : "—"
       ],
@@ -882,8 +909,8 @@ function renderShipments(data) {
   if (!filtered.length) { showEmpty("No shipments match your filter"); return; }
 
   const headers = can.updateShipment
-    ? ["Shipment ID","Supplier","Tracking No.","Port of Entry","Status","Action"]
-    : ["Shipment ID","Supplier","Tracking No.","Port of Entry","Status","Order Date"];
+    ? ["Shipment ID","Supplier","Tracking No.","Current Location","Status","Action"]
+    : ["Shipment ID","Supplier","Tracking No.","Current Location","Status","Order Date"];
 
   buildTable(headers, filtered.map(s => {
     const actionCell = can.updateShipment
@@ -897,7 +924,7 @@ function renderShipments(data) {
         `#${s.shipment_id}`,
         s.supplier_name || "—",
         `<span style="font-family:var(--font-mono);font-size:11px">${s.tracking_number || "—"}</span>`,
-        s.port_of_entry || "—",
+        s.current_location || s.port_of_entry || "—",
         badge(s.current_status),
         actionCell
       ],
@@ -958,6 +985,129 @@ async function updateShipmentStatus(id) {
     err.textContent = "Network error — is the backend running?";
     err.classList.remove("hidden");
   }
+}
+
+
+// ═══════════════════════════════════════════════════════
+// AUDIT LOG — PostgreSQL
+// ═══════════════════════════════════════════════════════
+function auditlog() {
+  setPage("Audit Log", "PostgreSQL → aeronet_system.audit_log");
+  showLoading(); hideActionBar();
+  showFilter([
+    { value:"CREATE",  label:"Create" },
+    { value:"UPDATE",  label:"Update" },
+    { value:"APPROVE", label:"Approve" },
+    { value:"VIEW",    label:"View" },
+  ]);
+
+  fetch(`${API}/auditlog`)
+    .then(r => r.json())
+    .then(data => { lastData = data; renderAuditLog(data); })
+    .catch(() => showEmpty("Cannot load audit log — check backend"));
+}
+
+function renderAuditLog(data) {
+  const search = searchInput.value.toLowerCase();
+  const filter = filterSelect.value;
+  const filtered = data.filter(a => {
+    const txt = ((a.emp_id||"") + (a.action_type||"") + (a.target_entity||"") + (a.details||"")).toLowerCase();
+    return txt.includes(search) && (filter === "all" || a.action_type === filter);
+  });
+  if (!filtered.length) { showEmpty("No audit records match"); return; }
+  buildTable(
+    ["Audit ID", "User ID", "Action", "Entity", "Target ID", "Timestamp", "Details"],
+    filtered.map(a => ({
+      cells: [
+        `#${a.audit_id}`,
+        `<span style="font-family:var(--font-mono)">${a.emp_id}</span>`,
+        badge(a.action_type),
+        `<span style="color:var(--muted)">${a.target_entity || "—"}</span>`,
+        `<span style="font-family:var(--font-mono);font-size:11px">${a.target_id || "—"}</span>`,
+        `<span style="font-size:11px;color:var(--muted)">${a.action_at ? String(a.action_at).split("T")[0] : "—"}</span>`,
+        `<span style="font-size:11px">${a.details || "—"}</span>`
+      ]
+    }))
+  );
+  setPage("Audit Log", `${filtered.length} of ${data.length} records · PostgreSQL`);
+}
+
+// ═══════════════════════════════════════════════════════
+// IoT CHART — Time-series per device
+// ═══════════════════════════════════════════════════════
+function iot_chart() {
+  setPage("IoT Chart", "Time-series temperature readings per device");
+  hideActionBar(); hideFilter();
+
+  fetch(`${API}/sensor`)
+    .then(r => r.json())
+    .then(data => {
+      lastData = data;
+      if (!data.length) { showEmpty("No IoT data available"); return; }
+
+      // Group by device
+      const devices = [...new Set(data.map(d => d.device_id))];
+      const colors  = ["#7c3aed","#22c55e","#f59e0b","#ef4444","#14b8a6"];
+
+      // Build a chart per device
+      content.innerHTML = devices.map((dev, i) => {
+        const readings = data.filter(d => d.device_id === dev)
+          .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        return `
+          <div class="kpi-panel" style="margin-bottom:16px">
+            <div class="kpi-section-title" style="color:${colors[i % colors.length]}">${dev}</div>
+            <div style="position:relative;height:160px">
+              <canvas id="chart_${i}" role="img" aria-label="Temperature trend for ${dev}"></canvas>
+            </div>
+          </div>`;
+      }).join("");
+
+      // Load Chart.js then draw
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js";
+      script.onload = () => {
+        devices.forEach((dev, i) => {
+          const readings = data.filter(d => d.device_id === dev)
+            .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+          const labels = readings.map(r => String(r.timestamp).split("T")[1]?.slice(0,5) || r.timestamp);
+          const temps  = readings.map(r => r.telemetry?.temperature || 0);
+          new Chart(document.getElementById(`chart_${i}`), {
+            type: "line",
+            data: {
+              labels,
+              datasets: [{
+                label: "Temperature (°C)",
+                data:  temps,
+                borderColor: colors[i % colors.length],
+                backgroundColor: colors[i % colors.length] + "22",
+                tension: 0.3,
+                fill: true,
+                pointRadius: 4
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: {
+                y: {
+                  beginAtZero: false,
+                  grid: { color: "rgba(255,255,255,0.06)" },
+                  ticks: { color: "#888", font: { size: 10 } }
+                },
+                x: {
+                  grid: { color: "rgba(255,255,255,0.04)" },
+                  ticks: { color: "#888", font: { size: 10 }, maxRotation: 0 }
+                }
+              }
+            }
+          });
+        });
+      };
+      document.head.appendChild(script);
+      setPage("IoT Chart", `${devices.length} devices · ${data.length} readings`);
+    })
+    .catch(() => showEmpty("Cannot load IoT data"));
 }
 
 // ═══════════════════════════════════════════════════════

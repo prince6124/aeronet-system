@@ -15,7 +15,14 @@ router.get("/", async (req, res) => {
         po.order_date,
         po.desired_delivery,
         po.actual_delivery,
-        s.business_name AS supplier_name
+        s.business_name AS supplier_name,
+        (
+          SELECT se.location
+          FROM shipment_event se
+          WHERE se.shipment_id = sh.shipment_id
+          ORDER BY se.event_timestamp DESC
+          LIMIT 1
+        ) AS current_location
       FROM shipment sh
       JOIN purchase_order po ON sh.order_id = po.order_id
       JOIN supplier s        ON po.supplier_id = s.supplier_id

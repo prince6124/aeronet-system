@@ -1,0 +1,25 @@
+{
+  "_id": {
+    "$oid": "69e43f24c520ec4c2a84b5e3"
+  },
+  "cert_id": "CERT-9001",
+  "part_id": "A320-FP-220",
+  "supplier_id": "SUP-01",
+  "standard": "AS9100",
+  "inspector": "EMP101",
+  "approval_date": "2026-02-15",
+  "status": "approved"
+}
+
+{
+  "_id": {
+    "$oid": "69e43f30c520ec4c2a84b5e5"
+  },
+  "cert_id": "CERT-9002",
+  "part_id": "A320-WP-330",
+  "supplier_id": "SUP-02",
+  "standard": "ISO9001",
+  "inspector": "EMP102",
+  "approval_date": "2026-02-20",
+  "status": "approved"
+}
