@@ -12,6 +12,20 @@ router.get("/", async (req, res) => {
   }
 });
 
+// GET version history for a specific report
+router.get("/:report_id/versions", async (req, res) => {
+  try {
+    const versions = await getDB()
+      .collection("qc_versions")
+      .find({ report_id: req.params.report_id })
+      .sort({ changed_at: -1 })
+      .toArray();
+    res.json(versions);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST — submit new QC report (Inspector)
 router.post("/", async (req, res) => {
   try {
@@ -32,32 +46,70 @@ router.post("/", async (req, res) => {
       notes:   notes || "",
       inspection_date: new Date().toISOString().split("T")[0],
       status:     "REVIEW",
+      version:    1,
       created_at: new Date()
     };
 
     await getDB().collection("qc_reports").insertOne(doc);
+
+    // Save initial version
+    await getDB().collection("qc_versions").insertOne({
+      report_id,
+      version:    1,
+      old_status: null,
+      new_status: "REVIEW",
+      changed_by: inspector_name || "Unknown",
+      changed_at: new Date(),
+      note:       "Report created"
+    });
+
     res.status(201).json({ message: "QC report submitted", doc });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// PATCH — approve or reject (Manager)
+// PATCH — approve or reject (Manager) — saves version history
 router.patch("/:report_id/status", async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, changed_by } = req.body;
     const allowed = ["APPROVED", "REVIEW", "REJECTED"];
     if (!allowed.includes(status)) {
       return res.status(400).json({ error: `Status must be one of: ${allowed.join(", ")}` });
     }
-    const result = await getDB().collection("qc_reports").updateOne(
-      { report_id: req.params.report_id },
-      { $set: { status, updated_at: new Date() } }
+
+    // Get current report to capture old status
+    const current = await getDB().collection("qc_reports").findOne(
+      { report_id: req.params.report_id }
     );
-    if (result.matchedCount === 0) {
+    if (!current) {
       return res.status(404).json({ error: "Report not found" });
     }
-    res.json({ message: `Report ${req.params.report_id} updated to ${status}` });
+
+    const oldStatus  = current.status;
+    const newVersion = (current.version || 1) + 1;
+
+    // Update the report
+    await getDB().collection("qc_reports").updateOne(
+      { report_id: req.params.report_id },
+      { $set: { status, updated_at: new Date(), version: newVersion } }
+    );
+
+    // Save version snapshot
+    await getDB().collection("qc_versions").insertOne({
+      report_id:  req.params.report_id,
+      version:    newVersion,
+      old_status: oldStatus,
+      new_status: status,
+      changed_by: changed_by || "Manager",
+      changed_at: new Date(),
+      note:       `Status changed from ${oldStatus} to ${status}`
+    });
+
+    res.json({
+      message: `Report ${req.params.report_id} updated to ${status}`,
+      version: newVersion
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

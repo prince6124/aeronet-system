@@ -2,7 +2,7 @@ const express = require("express");
 const router  = require("express").Router();
 const { pgPool } = require("../db");
 
-// GET /api/shipments — all shipments with supplier info
+// GET /api/shipments — all shipments with ETA calculation
 router.get("/", async (req, res) => {
   try {
     const result = await pgPool.query(`
@@ -22,7 +22,20 @@ router.get("/", async (req, res) => {
           WHERE se.shipment_id = sh.shipment_id
           ORDER BY se.event_timestamp DESC
           LIMIT 1
-        ) AS current_location
+        ) AS current_location,
+        -- ETA calculation
+        CASE
+          WHEN sh.current_status = 'Delivered' THEN NULL
+          WHEN po.desired_delivery IS NULL THEN NULL
+          ELSE (po.desired_delivery - CURRENT_DATE)
+        END AS days_until_delivery,
+        CASE
+          WHEN sh.current_status = 'Delivered' THEN 'on_time'
+          WHEN po.desired_delivery IS NULL THEN 'unknown'
+          WHEN po.desired_delivery < CURRENT_DATE THEN 'overdue'
+          WHEN po.desired_delivery = CURRENT_DATE THEN 'due_today'
+          ELSE 'on_track'
+        END AS eta_status
       FROM shipment sh
       JOIN purchase_order po ON sh.order_id = po.order_id
       JOIN supplier s        ON po.supplier_id = s.supplier_id
@@ -42,7 +55,8 @@ router.get("/:id", async (req, res) => {
         sh.*,
         po.order_date,
         po.desired_delivery,
-        s.business_name AS supplier_name
+        s.business_name AS supplier_name,
+        (po.desired_delivery - CURRENT_DATE) AS days_until_delivery
       FROM shipment sh
       JOIN purchase_order po ON sh.order_id = po.order_id
       JOIN supplier s        ON po.supplier_id = s.supplier_id
@@ -77,13 +91,11 @@ router.patch("/:id/status", async (req, res) => {
       return res.status(400).json({ error: `Status must be one of: ${allowed.join(", ")}` });
     }
 
-    // Update shipment status
     await pgPool.query(
       "UPDATE shipment SET current_status = $1 WHERE shipment_id = $2",
       [status, req.params.id]
     );
 
-    // Log a shipment event
     await pgPool.query(`
       INSERT INTO shipment_event (shipment_id, event_type, location, event_timestamp, condition_notes)
       VALUES ($1, $2, $3, NOW(), $4)

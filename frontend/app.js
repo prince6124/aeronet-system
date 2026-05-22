@@ -440,17 +440,16 @@ function renderQC(data) {
   if (!filtered.length) { showEmpty("No QC reports match your filter"); return; }
 
   // Extra column for action buttons if manager
-  const headers = can.approveQC
-    ? ["Report ID","Part ID","Inspector","Type","Status","Action"]
-    : ["Report ID","Part ID","Inspector","Type","Status"];
+  const headers = ["Report ID","Part ID","Inspector","Type","Status","Action"];
 
   buildTable(headers, filtered.map(q => {
     const actionCell = can.approveQC
-      ? `<span style="display:flex;gap:6px">
+      ? `<span style="display:flex;gap:4px;flex-wrap:wrap">
            ${q.status !== "APPROVED" ? `<button class="inline-btn btn-approve" onclick="updateQCStatus('${q.report_id}','APPROVED',event)">Approve</button>` : ""}
-           ${q.status !== "REJECTED" ? `<button class="inline-btn btn-reject"  onclick="updateQCStatus('${q.report_id}','REJECTED',event)">Reject</button>` : ""}
+           ${q.status !== "REJECTED" ? `<button class="inline-btn btn-reject"  onclick="updateQCStatus('${q.report_id}','REJECTED',event)">Reject</button>`  : ""}
+           <button class="inline-btn" style="background:rgba(124,58,237,.15);color:var(--accent-lt)" onclick="showQCVersions('${q.report_id}',event)">History</button>
          </span>`
-      : null;
+      : `<button class="inline-btn" style="background:rgba(124,58,237,.15);color:var(--accent-lt)" onclick="showQCVersions('${q.report_id}',event)">History</button>`;
 
     return {
       cells: [
@@ -459,7 +458,7 @@ function renderQC(data) {
         q.inspector?.name || "—",
         badge(q.inspection_type),
         badge(q.status),
-        ...(can.approveQC ? [actionCell] : [])
+        actionCell
       ],
       alertColor: q.status === "REVIEW" ? "yellow" : q.status === "REJECTED" ? "red" : null
     };
@@ -555,17 +554,50 @@ async function submitQCReport() {
 async function updateQCStatus(reportId, status, e) {
   e.stopPropagation();
   try {
-    const res = await fetch(`${API}/qc/${reportId}/status`, {
+    const res  = await fetch(`${API}/qc/${reportId}/status`, {
       method:  "PATCH",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ status })
+      body:    JSON.stringify({ status, changed_by: currentUser })
     });
     const data = await res.json();
     if (!res.ok) { showAlert("Error: " + data.error, "red"); return; }
-    showAlert(`✔ Report ${reportId} marked as ${status}`, status === "APPROVED" ? "green" : "red");
-    qc(); // refresh
+    showAlert(`✔ Report ${reportId} marked as ${status} (v${data.version || "?"})`,
+      status === "APPROVED" ? "green" : "red");
+    qc();
   } catch {
     showAlert("Network error — is the backend running?", "red");
+  }
+}
+
+async function showQCVersions(reportId, e) {
+  e.stopPropagation();
+  try {
+    const res  = await fetch(`${API}/qc/${reportId}/versions`);
+    const data = await res.json();
+    if (!data.length) {
+      openModal(`<h2 class="modal-title">Version History — ${reportId}</h2>
+        <p style="color:var(--muted);padding:16px">No version history yet.</p>
+        <div class="modal-actions"><button class="ab-btn ab-ghost" onclick="closeModalDirect()">Close</button></div>`);
+      return;
+    }
+    const rows = data.map(v => `
+      <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-family:var(--font-mono);font-size:12px;color:var(--accent-lt)">v${v.version}</span>
+          <span style="font-size:11px;color:var(--muted)">${String(v.changed_at).split("T")[0]}</span>
+        </div>
+        <div style="font-size:13px;margin-top:4px">${v.note || "—"}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">by ${v.changed_by}</div>
+      </div>`).join("");
+    openModal(`
+      <h2 class="modal-title">Version History</h2>
+      <p class="modal-sub">Report: ${reportId}</p>
+      <div style="max-height:400px;overflow-y:auto;padding:0 4px">${rows}</div>
+      <div class="modal-actions">
+        <button class="ab-btn ab-ghost" onclick="closeModalDirect()">Close</button>
+      </div>`);
+  } catch {
+    showAlert("Could not load version history", "red");
   }
 }
 
@@ -909,10 +941,21 @@ function renderShipments(data) {
   if (!filtered.length) { showEmpty("No shipments match your filter"); return; }
 
   const headers = can.updateShipment
-    ? ["Shipment ID","Supplier","Tracking No.","Current Location","Status","Action"]
-    : ["Shipment ID","Supplier","Tracking No.","Current Location","Status","Order Date"];
+    ? ["Shipment ID","Supplier","Tracking No.","Current Location","Status","ETA","Action"]
+    : ["Shipment ID","Supplier","Tracking No.","Current Location","Status","ETA","Order Date"];
 
   buildTable(headers, filtered.map(s => {
+    // ETA cell
+    let etaCell = "—";
+    if (s.current_status === "Delivered") {
+      etaCell = `<span style="color:var(--green);font-size:11px">✓ Delivered</span>`;
+    } else if (s.days_until_delivery !== null && s.days_until_delivery !== undefined) {
+      const days = parseInt(s.days_until_delivery);
+      if (days < 0)      etaCell = `<span style="color:var(--red);font-size:11px">⚠ ${Math.abs(days)}d overdue</span>`;
+      else if (days === 0) etaCell = `<span style="color:var(--yellow);font-size:11px">⚠ Due today</span>`;
+      else               etaCell = `<span style="color:var(--green);font-size:11px">${days}d remaining</span>`;
+    }
+
     const actionCell = can.updateShipment
       ? `<span style="display:flex;gap:6px">
            <button class="inline-btn btn-approve" onclick="openUpdateShipment(${s.shipment_id},'${s.current_status}',event)">Update</button>
@@ -926,6 +969,7 @@ function renderShipments(data) {
         `<span style="font-family:var(--font-mono);font-size:11px">${s.tracking_number || "—"}</span>`,
         s.current_location || s.port_of_entry || "—",
         badge(s.current_status),
+        etaCell,
         actionCell
       ],
       alertColor: s.current_status === "Delayed" ? "red" : s.current_status === "Pending" ? "yellow" : null
